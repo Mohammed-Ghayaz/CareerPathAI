@@ -33,7 +33,7 @@ const Dashboard = () => {
     
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!session) {
-        navigate("/auth");
+        navigate("/");
       } else {
         setUser(session.user);
       }
