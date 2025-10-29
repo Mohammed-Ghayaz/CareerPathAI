@@ -1,73 +1,130 @@
-# Welcome to your Lovable project
+Career Path AI
+================
 
-## Project info
+From reflection to direction. Career Path AI turns your personal journaling into actionable career insights, backed by lightweight analytics and AI mentoring.
 
-**URL**: https://lovable.dev/projects/7045c5da-22b1-4ea7-b191-b810f9d8961c
+Overview
+--------
 
-## How can I edit this code?
+Career Path AI helps you:
+- Identify top career matches based on journal patterns
+- Store “careers to avoid” with reasons, so you don’t revisit poor fits
+- Track mood, motivation, and stress over time
+- Chat with an AI mentor for guidance
+- Download a shareable PDF report
 
-There are several ways of editing your application.
+Key Features
+------------
 
-**Use Lovable**
+- AI-powered predictions: suggests careers, confidence, reasoning, and skills to develop
+- Careers to avoid: persisted per user with rationale
+- Journaling: capture entries with sentiment and detected skills/interests
+- Mood analytics: daily mood, stress, productivity, and dominant emotions
+- PDF reporting: export top matches, rationale, and avoid list
+- Clean UI: built with Tailwind and shadcn/ui components
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/7045c5da-22b1-4ea7-b191-b810f9d8961c) and start prompting.
+Tech Stack
+---------
 
-Changes made via Lovable will be committed automatically to this repo.
+- Frontend: React + TypeScript, Vite, Tailwind CSS, shadcn/ui
+- Icons/Charts: lucide-react, charting primitives
+- Backend: Supabase (Postgres, Auth, RLS, Edge Functions)
+- AI: Hosted chat-completions gateway (Gemini family) for predictions
 
-**Use your preferred IDE**
+Architecture
+------------
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+- App Shell (Vite SPA)
+  - `src/pages`: `Index`, `Dashboard`, `Auth`, `NotFound`
+  - `src/components`: `CareerPredictions`, `AIMentor`, `JournalEntry`, `MoodChart`, `VoiceRecorder`, and UI primitives
+  - `src/integrations/supabase`: typed client + generated types
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+- Supabase
+  - Database tables (public schema)
+    - `profiles`: minimal user profile
+    - `journal_entries`: content, emotions, detected skills/interests, AI summary/insights
+    - `mood_tracking`: daily aggregate mood metrics
+    - `career_predictions`: recommended careers with confidence, reasoning, skills, resources
+    - `career_avoidances`: careers to avoid with reason (per-user)
+  - RLS policies: per-table policies limiting access to the authenticated user
+  - Edge Functions (Deno)
+    - `predict-career`: analyzes recent entries and persists recommended careers + careers to avoid
+    - `analyze-journal`: analyzes journal content (AI)
+    - `chat-mentor`: conversational mentor
 
-Follow these steps:
+Data Model (Selected)
+---------------------
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+- `career_predictions`
+  - `user_id` (uuid, FK `profiles.id`)
+  - `career_path` (text)
+  - `confidence_score` (number)
+  - `reasoning` (text)
+  - `recommended_skills` (text[])
+  - `learning_resources` (json)
+  - `is_active` (boolean)
+  - timestamps
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+- `career_avoidances`
+  - `user_id` (uuid, FK `profiles.id`)
+  - `career_path` (text, unique with `user_id`)
+  - `reason` (text)
+  - timestamps
 
-# Step 3: Install the necessary dependencies.
-npm i
+Core Flows
+----------
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+- Generate predictions
+  1) Edge function `predict-career` summarizes recent `journal_entries`
+  2) Calls AI for 3 recommended + 3 avoid
+  3) Replaces prior rows in `career_predictions` and `career_avoidances`
+  4) UI fetches and displays results, with optional local caching of avoid list
 
-**Edit a file directly in GitHub**
+- Reporting
+  - `CareerPredictions` builds a PDF: title, timestamps, ranked careers, reasoning, skills, and “careers to reconsider” section
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+Favicon
+-------
 
-**Use GitHub Codespaces**
+- Inline SVG favicon based on `Brain` icon with purple background and padding
+- Defined in `index.html` `<head>` to avoid favicon caching/fallback issues
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+Security & Privacy
+------------------
 
-## What technologies are used for this project?
+- Row-Level Security (RLS) ensures users can only access their own rows
+- Service-role key is used only in Edge Functions; client uses anon key
+- Journals are summarized before AI calls to reduce token usage
 
-This project is built with:
+Deployment Notes
+----------------
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+- Frontend is a Vite SPA suitable for platforms like Vercel (build → `dist`)
+- Supabase Edge Functions are deployed via Supabase CLI
+- Environment variables required by the app and functions should be configured in their respective hosts
 
-## How can I deploy this project?
+Roadmap Ideas
+-------------
 
-Simply open [Lovable](https://lovable.dev/projects/7045c5da-22b1-4ea7-b191-b810f9d8961c) and click on Share -> Publish.
+- Manual “Avoid this” toggle from a recommendation card
+- History of prediction runs and diffs
+- Deeper skill-gap analysis and learning-path sequencing
+- Multi-language support
 
-## Can I connect a custom domain to my Lovable project?
+Authors
+-------
 
-Yes, you can!
+- Z Mohammed Ghayaz
+  - [LinkedIn | Mohammed Ghayaz](https://www.linkedin.com/in/mohammed-ghayaz/)
+  - [GitHub | Mohammed Ghayaz](https://github.com/Mohammed-Ghayaz/)
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+- Abhinav M
+  - [LinkedIn | Abhinav](https://www.linkedin.com/in/abhinav070/)
+  - [GitHub | Abhinav](https://github.com/abhinav0700/)
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+License
+-------
+
+MIT
+
+
