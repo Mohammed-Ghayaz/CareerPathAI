@@ -14,14 +14,14 @@ const CareerPredictions = ({ userId, compact = false }: { userId: string; compac
   const [lastAnalyzed, setLastAnalyzed] = useState<string | null>(null);
   const { toast } = useToast();
 
-  // Load cached data when user logs in or refreshes
   useEffect(() => {
     if (userId) {
       loadCachedPredictions();
 
-      const savedAvoid = localStorage.getItem("careersToAvoid");
-      if (savedAvoid) {
-        setCareersToAvoid(JSON.parse(savedAvoid));
+      // ✅ Load from localStorage in case DB doesn't return it
+      const cachedAvoid = localStorage.getItem(`careersToAvoid_${userId}`);
+      if (cachedAvoid) {
+        setCareersToAvoid(JSON.parse(cachedAvoid));
       }
     }
   }, [userId]);
@@ -36,12 +36,13 @@ const CareerPredictions = ({ userId, compact = false }: { userId: string; compac
         .order("confidence_score", { ascending: false });
 
       if (error) throw error;
-
+      
       if (data && data.length > 0) {
         setPredictions(data);
         setLastAnalyzed(data[0].updated_at);
       }
 
+      // ✅ Load careers to avoid from DB
       const { data: avoidData, error: avoidError } = await supabase
         .from("career_avoidances")
         .select("career_path, reason")
@@ -49,13 +50,17 @@ const CareerPredictions = ({ userId, compact = false }: { userId: string; compac
         .order("created_at", { ascending: true });
 
       if (avoidError) throw avoidError;
-      if (avoidData && avoidData.length > 0) {
-        const formattedAvoid = avoidData.map((a) => ({
+
+      const avoidList =
+        (avoidData || []).map((a) => ({
           careerPath: a.career_path,
           reason: a.reason || "",
-        }));
-        setCareersToAvoid(formattedAvoid);
-        localStorage.setItem("careersToAvoid", JSON.stringify(formattedAvoid));
+        })) || [];
+
+      // ✅ Update state and cache
+      if (avoidList.length > 0) {
+        setCareersToAvoid(avoidList);
+        localStorage.setItem(`careersToAvoid_${userId}`, JSON.stringify(avoidList));
       }
     } catch (error) {
       console.error("Error loading cached predictions:", error);
@@ -67,33 +72,21 @@ const CareerPredictions = ({ userId, compact = false }: { userId: string; compac
     try {
       const { data, error } = await supabase.functions.invoke("predict-career");
       if (error) throw error;
-
+      
       if (data?.message) {
         toast({ title: "Not enough data", description: data.message });
         setPredictions([]);
         setCareersToAvoid([]);
-        localStorage.removeItem("careersToAvoid");
+        localStorage.removeItem(`careersToAvoid_${userId}`);
       } else if (data?.predictions) {
-        // ✅ Normalize keys for consistency
-        const formattedPredictions = data.predictions.map((p: any) => ({
-          id: p.id || Math.random().toString(36).slice(2),
-          career_path: p.career_path || p.careerPath,
-          confidence_score: p.confidence_score || p.confidence || 0,
-          reasoning: p.reasoning || "",
-          recommended_skills: p.recommended_skills || p.recommendedSkills || [],
-          learning_resources: p.learning_resources || p.learningResources || [],
-        }));
+        setPredictions(data.predictions);
+        const avoidList = data.avoid || [];
+        setCareersToAvoid(avoidList);
 
-        const formattedAvoid = (data.avoid || []).map((a: any) => ({
-          careerPath: a.careerPath || a.career_path,
-          reason: a.reason || "",
-        }));
+        // ✅ Persist avoid list
+        localStorage.setItem(`careersToAvoid_${userId}`, JSON.stringify(avoidList));
 
-        setPredictions(formattedPredictions);
-        setCareersToAvoid(formattedAvoid);
-        localStorage.setItem("careersToAvoid", JSON.stringify(formattedAvoid));
-
-        setLastAnalyzed(new Date().toISOString());
+        await loadCachedPredictions();
         toast({ title: "Success!", description: "Career predictions updated" });
       }
     } catch (error) {
@@ -108,14 +101,12 @@ const CareerPredictions = ({ userId, compact = false }: { userId: string; compac
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     let yPos = 20;
-
-    // Title
+    
     doc.setFontSize(20);
     doc.setFont("helvetica", "bold");
     doc.text("Career Path Report", pageWidth / 2, yPos, { align: "center" });
     yPos += 15;
-
-    // Date
+    
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
     doc.text(`Generated: ${new Date().toLocaleDateString()}`, pageWidth / 2, yPos, { align: "center" });
@@ -124,19 +115,18 @@ const CareerPredictions = ({ userId, compact = false }: { userId: string; compac
       doc.text(`Last Analyzed: ${new Date(lastAnalyzed).toLocaleDateString()}`, pageWidth / 2, yPos, { align: "center" });
     }
     yPos += 15;
-
-    // Recommended Careers
+    
     doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
     doc.text("Top Career Matches", 15, yPos);
     yPos += 10;
-
+    
     predictions.forEach((pred, index) => {
       if (yPos > 270) {
         doc.addPage();
         yPos = 20;
       }
-
+      
       doc.setFontSize(12);
       doc.setFont("helvetica", "bold");
       doc.text(`${index + 1}. ${pred.career_path}`, 15, yPos);
@@ -144,43 +134,42 @@ const CareerPredictions = ({ userId, compact = false }: { userId: string; compac
       doc.setFont("helvetica", "normal");
       doc.text(`Confidence: ${pred.confidence_score}%`, 25, yPos + 5);
       yPos += 10;
-
+      
       const reasoningLines = doc.splitTextToSize(`Reasoning: ${pred.reasoning}`, pageWidth - 35);
       doc.text(reasoningLines, 20, yPos);
       yPos += reasoningLines.length * 5 + 5;
-
+      
       if (pred.recommended_skills && pred.recommended_skills.length > 0) {
         doc.text(`Skills to develop: ${pred.recommended_skills.join(", ")}`, 20, yPos);
         yPos += 10;
       }
-
+      
       yPos += 5;
     });
-
-    // Careers to Avoid
+    
     if (careersToAvoid.length > 0) {
       if (yPos > 250) {
         doc.addPage();
         yPos = 20;
       }
-
+      
       yPos += 10;
       doc.setFontSize(16);
       doc.setFont("helvetica", "bold");
       doc.text("Careers to Reconsider", 15, yPos);
       yPos += 10;
-
+      
       careersToAvoid.forEach((career, index) => {
         if (yPos > 270) {
           doc.addPage();
           yPos = 20;
         }
-
+        
         doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
         doc.text(`${index + 1}. ${career.careerPath}`, 15, yPos);
         yPos += 5;
-
+        
         doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
         const reasonLines = doc.splitTextToSize(`Reason: ${career.reason}`, pageWidth - 35);
@@ -188,8 +177,8 @@ const CareerPredictions = ({ userId, compact = false }: { userId: string; compac
         yPos += reasonLines.length * 5 + 10;
       });
     }
-
-    doc.save(`career-report-${new Date().toISOString().split("T")[0]}.pdf`);
+    
+    doc.save(`career-report-${new Date().toISOString().split('T')[0]}.pdf`);
     toast({ title: "Downloaded!", description: "Your career report has been downloaded as PDF" });
   };
 
@@ -239,7 +228,6 @@ const CareerPredictions = ({ userId, compact = false }: { userId: string; compac
         </div>
       </div>
 
-      {/* Recommended Careers */}
       {predictions.map((pred, i) => (
         <Card key={pred.id || i} className="p-4 hover:shadow-md transition-shadow">
           <div className="flex justify-between items-start mb-2">
@@ -251,7 +239,7 @@ const CareerPredictions = ({ userId, compact = false }: { userId: string; compac
           {!compact && (
             <>
               <p className="text-sm text-muted-foreground mt-2">{pred.reasoning}</p>
-
+              
               {pred.recommended_skills && pred.recommended_skills.length > 0 && (
                 <div className="mt-3">
                   <p className="text-xs font-semibold mb-1">Skills to develop:</p>
@@ -290,7 +278,6 @@ const CareerPredictions = ({ userId, compact = false }: { userId: string; compac
         </Card>
       ))}
 
-      {/* Careers to Avoid */}
       {!compact && careersToAvoid.length > 0 && (
         <div className="mt-6">
           <h3 className="text-lg font-semibold mb-3 flex items-center gap-2 text-destructive">
